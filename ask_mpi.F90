@@ -10,7 +10,7 @@
 
 program ask_mpi
 
-   use mpi_f08
+   use mpi
 #if defined(__INTEL_COMPILER)
    use ifport, only: getpid, getcwd!, hostnm
 #endif /* __INTEL_COMPILER */
@@ -21,7 +21,7 @@ program ask_mpi
    character(len = MPI_MAX_LIBRARY_VERSION_STRING) :: version_string
    character(len = MPI_MAX_PROCESSOR_NAME) :: myname
    integer(kind = MPI_ADDRESS_KIND) :: tag_ub
-   integer(kind = MPI_INTEGER_KIND) :: version, subversion, provided, resultlen, comm_size, my_rank, mynamelen, &
+   integer(kind = MPI_INTEGER_KIND) :: ierr, version, subversion, provided, resultlen, comm_size, my_rank, mynamelen, &
         &                              pid_proc, cwd_status !, host_status
    integer, parameter :: buflen = 64, cwdlen = 512
    character(len = buflen) :: buf, sbuf
@@ -33,10 +33,10 @@ program ask_mpi
    type(MPI_Info) :: hw_info
 #endif
 
-   call MPI_Init()
+   call MPI_Init(ierr)
 
-   call MPI_Comm_size(MPI_COMM_WORLD, comm_size)
-   call MPI_Comm_rank(MPI_COMM_WORLD, my_rank)
+   call MPI_Comm_size(MPI_COMM_WORLD, comm_size, ierr)
+   call MPI_Comm_rank(MPI_COMM_WORLD, my_rank, ierr)
 
    if (my_rank == 0) then
       write(buf, *) comm_size
@@ -45,11 +45,11 @@ program ask_mpi
 
    pid_proc    = getpid()
    cwd_status  = getcwd(cwd_proc)
-   call MPI_Get_processor_name(myname, mynamelen)
+   call MPI_Get_processor_name(myname, mynamelen, ierr)
    !host_status = hostnm(host_proc)  ! hostnm returns the same thing as MPI_Get_processor_name
 
    do i = 0, comm_size
-      call MPI_Barrier(MPI_COMM_WORLD)
+      call MPI_Barrier(MPI_COMM_WORLD, ierr)
       if (my_rank == i) then
          write(*,*)'MPI rank: ', my_rank, ' hostname: "' // trim(myname) // '", PID = ', pid_proc, &
               &    ' CWD = "' // trim(cwd_proc) // '"'
@@ -57,19 +57,19 @@ program ask_mpi
          ! call flush(output_unit)
       end if
    end do
-   call MPI_Barrier(MPI_COMM_WORLD)
+   call MPI_Barrier(MPI_COMM_WORLD, ierr)
 
    if (my_rank == 0) then
-      call MPI_Get_version(version, subversion)
+      call MPI_Get_version(version, subversion, ierr)
       write(buf, *) version
       write(sbuf, *) subversion
       write(*,*)'MPI version:          ' // trim(adjustl(buf)) // '.' // trim(adjustl(sbuf))
 
-      call MPI_Query_thread(provided)
+      call MPI_Query_thread(provided, ierr)
       write(buf, *) provided
       write(*,*)'MPI_Query_thread:     ' // trim(adjustl(buf))
 
-      call MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, tag_ub, flag)
+      call MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, tag_ub, flag, ierr)
       if (flag) then
          write(buf, *) tag_ub
          write(*,*)'Upper bound for tags: ' // trim(adjustl(buf))
@@ -97,19 +97,12 @@ program ask_mpi
 
       call printinfo(MPI_INFO_ENV, "MPI_INFO_ENV")
 
-#ifdef MPI41
-      call MPI_Info_create(hw_info)
-      call MPI_Get_hw_resource_info(hw_info)
-      call printinfo(hw_info, "MPI_Get_hw_resource_info")
-      call MPI_Info_free(hw_info)
-#endif
-
-      call MPI_Get_library_version(version_string, resultlen)
+      call MPI_Get_library_version(version_string, resultlen, ierr)
       write(*,*)'MPI build:            ' // trim(version_string)
 
    end if
 
-   call MPI_Finalize()
+   call MPI_Finalize(ierr)
 
 contains
 
@@ -117,26 +110,18 @@ contains
 
       implicit none
 
-      type(MPI_Info), intent(in) :: mpi_info_object
+      integer(kind = MPI_INTEGER_KIND), intent(in) :: mpi_info_object
       character(len = *), intent(in) :: descr
 
       character(len = MPI_MAX_INFO_VAL) :: key, value
       integer(kind = MPI_INTEGER_KIND) :: nkeys
-!!$#ifdef MPI41
-!!$      integer, parameter :: buflen = MPI_MAX_INFO_VAL
-!!$#endif
 
-      call MPI_Info_get_nkeys(mpi_info_object, nkeys)
+      call MPI_Info_get_nkeys(mpi_info_object, nkeys, ierr)
       if (nkeys > 0) then
          write(*,*)"Read ", nkeys, " keys from " // trim(descr)
          do i = 0, nkeys - 1
-            call MPI_Info_get_nthkey(mpi_info_object, i, key)
-! MPI_Info_get is deprecated since MPI 4.0
-!!$#ifdef MPI41
-!!$            call MPI_Info_get_string(mpi_info_object, key, buflen, value, flag)
-!!$#else
-            call MPI_Info_get(mpi_info_object, key, MPI_MAX_INFO_VAL, value, flag)
-!!$#endif
+            call MPI_Info_get_nthkey(mpi_info_object, i, key, ierr)
+            call MPI_Info_get(mpi_info_object, key, MPI_MAX_INFO_VAL, value, flag, ierr)
             if (flag) write(*,*)"  Key: " // trim(key) // " = " // trim(value)
          end do
       else
