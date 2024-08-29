@@ -73,14 +73,21 @@ program ask_mpi
       if (flag) then
          write(buf, *) tag_ub
          write(*,*)'Upper bound for tags: ' // trim(adjustl(buf))
-         ! This may vary a lot between MPI implementations:
+         ! This may vary a lot between MPI implementations and even
+         ! compilations:
          !
          ! 2**19 - 1 = 524287 :
          !     * Intel(R) MPI 2021.13 (MPI 3.1)
          !
+         ! 2**23 - 1 = 8388607 :
+         !     * Open MPI v4.0.5 (MPI 3.1)
+         !
          ! 2**28 - 1 = 268435455 :
          !     * MPICH 4.0.2 (MPI 4.0)
          !     * MPICH 4.2.2 (MPI 4.1)
+         !
+         ! 2**29 - 1 = 536870911 :
+         !     * MPICH 3.1.4 (MPI 3.0)
          !
          ! 2**31 - 1 = 2147483647 :
          !     * Open MPI v5.0.4, v4.1.4, v2.1.1 (MPI 3.1)
