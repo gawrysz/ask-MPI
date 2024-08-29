@@ -21,10 +21,10 @@ program ask_mpi
    character(len = MPI_MAX_LIBRARY_VERSION_STRING) :: version_string
    character(len = MPI_MAX_PROCESSOR_NAME) :: myname
    integer(kind = MPI_ADDRESS_KIND) :: tag_ub
-   integer(kind = MPI_INTEGER_KIND) :: version, subversion, provided, resultlen, comm_size, my_rank, mynamelen, &
-        &                              pid_proc, cwd_status !, host_status
+   integer(kind = MPI_INTEGER_KIND) :: ierr, version, subversion, provided, resultlen, comm_size, my_rank, mynamelen, &
+        &                              pid_proc, cwd_status, slen !, host_status
    integer, parameter :: buflen = 64, cwdlen = 512
-   character(len = buflen) :: buf, sbuf
+   character(len = buflen) :: buf
    integer :: i
    logical :: flag
    character(len = cwdlen) :: cwd_proc
@@ -33,15 +33,17 @@ program ask_mpi
    type(MPI_Info) :: hw_info
 #endif
 
-   call MPI_Init()
+   call MPI_Init(ierr)
+   if (ierr /= MPI_SUCCESS) then
+      call MPI_Error_string(ierr, cwd_proc, slen)
+      write(*, '(A)')'MPI_Init failed: ' // cwd_proc
+      stop
+   endif
 
    call MPI_Comm_size(MPI_COMM_WORLD, comm_size)
    call MPI_Comm_rank(MPI_COMM_WORLD, my_rank)
 
-   if (my_rank == 0) then
-      write(buf, *) comm_size
-      write(*,*)'Program ask_mpi started on ' // trim(adjustl(buf)) // ' ranks.'
-   end if
+   if (my_rank == 0) write(*, '(A,I0,A)') 'Program ask_mpi started on ', comm_size, ' ranks.'
 
    pid_proc    = getpid()
    cwd_status  = getcwd(cwd_proc)
@@ -51,28 +53,36 @@ program ask_mpi
    do i = 0, comm_size
       call MPI_Barrier(MPI_COMM_WORLD)
       if (my_rank == i) then
-         write(*,*)'MPI rank: ', my_rank, ' hostname: "' // trim(myname) // '", PID = ', pid_proc, &
-              &    ' CWD = "' // trim(cwd_proc) // '"'
-         ! call sleep(1)
+         write(*, '(A,I11,A,I0,A)')'MPI rank: ', my_rank, ' hostname = "' // trim(myname) // '", PID = ', pid_proc, &
+              &                    ' CWD = "' // trim(cwd_proc) // '"'
          ! call flush(output_unit)
       end if
    end do
    call MPI_Barrier(MPI_COMM_WORLD)
+   call sleep(1)
 
    if (my_rank == 0) then
       call MPI_Get_version(version, subversion)
-      write(buf, *) version
-      write(sbuf, *) subversion
-      write(*,*)'MPI version:          ' // trim(adjustl(buf)) // '.' // trim(adjustl(sbuf))
+      write(*, '(A,I0,A,I0)')'MPI version:          ', version, '.', subversion
 
       call MPI_Query_thread(provided)
-      write(buf, *) provided
-      write(*,*)'MPI_Query_thread:     ' // trim(adjustl(buf))
+      select case (provided)
+      case (MPI_THREAD_SINGLE)
+         buf = 'Single-threaded'
+      case (MPI_THREAD_FUNNELED)
+         buf = 'Funneled'
+      case (MPI_THREAD_SERIALIZED)
+         buf = 'Serialized'
+      case (MPI_THREAD_MULTIPLE)
+         buf = 'Multiple'
+      case default
+         buf = 'Unknown'
+      end select
+      write(*, '(A)')'MPI_Query_thread:     ' // trim(buf)
 
       call MPI_Comm_get_attr(MPI_COMM_WORLD, MPI_TAG_UB, tag_ub, flag)
       if (flag) then
-         write(buf, *) tag_ub
-         write(*,*)'Upper bound for tags: ' // trim(adjustl(buf))
+         write(*, '(A,I0)')'Upper bound for tags: ', tag_ub
          ! This may vary a lot between MPI implementations and even
          ! compilations:
          !
@@ -92,7 +102,7 @@ program ask_mpi
          ! 2**31 - 1 = 2147483647 :
          !     * Open MPI v5.0.4, v4.1.4, v2.1.1 (MPI 3.1)
       else
-         write(*,*)'Error: unknown attribute'
+         write(*, '(A)')'Error: unknown attribute'
       end if
 
       call printinfo(MPI_INFO_ENV, "MPI_INFO_ENV")
@@ -105,7 +115,7 @@ program ask_mpi
 #endif
 
       call MPI_Get_library_version(version_string, resultlen)
-      write(*,*)'MPI build:            ' // trim(version_string)
+      write(*, '(2A)')'MPI build:            ', trim(version_string)
 
    end if
 
@@ -128,19 +138,20 @@ contains
 
       call MPI_Info_get_nkeys(mpi_info_object, nkeys)
       if (nkeys > 0) then
-         write(*,*)"Read ", nkeys, " keys from " // trim(descr)
+         write(*, '(A,I0,A)')"Read ", nkeys, " keys from " // trim(descr)
          do i = 0, nkeys - 1
             call MPI_Info_get_nthkey(mpi_info_object, i, key)
-! MPI_Info_get is deprecated since MPI 4.0
+
+            ! MPI_Info_get is deprecated since MPI 4.0
 !!$#ifdef MPI41
-!!$            call MPI_Info_get_string(mpi_info_object, key, buflen, value, flag)
+!!$            call MPI_Info_get_string(mpi_info_object, key, slen, value, flag)
 !!$#else
             call MPI_Info_get(mpi_info_object, key, MPI_MAX_INFO_VAL, value, flag)
 !!$#endif
-            if (flag) write(*,*)"  Key: " // trim(key) // " = " // trim(value)
+            if (flag) write(*, '(A)')"  Key:" // trim(key) // " = " // trim(value)
          end do
       else
-         write(*,*)"No keys were read from " // trim(descr)
+         write(*, '(A)')"No keys were read from " // trim(descr)
       end if
 
    end subroutine printinfo
