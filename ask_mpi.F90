@@ -18,21 +18,26 @@ program ask_mpi
 
    implicit none
 
+   integer, parameter :: buflen = 64, cwdlen = 512
+   ! Define character arrays for storing version and processor information
    character(len = MPI_MAX_LIBRARY_VERSION_STRING) :: version_string
    character(len = MPI_MAX_PROCESSOR_NAME) :: myname
+   character(len = cwdlen) :: cwd_proc
+   ! character(len = buflen) :: host_proc
+
+   ! Define integers and logical flags
    integer(kind = MPI_ADDRESS_KIND) :: tag_ub
    integer(kind = MPI_INTEGER_KIND) :: ierr, version, subversion, provided, resultlen, comm_size, my_rank, mynamelen, &
         &                              pid_proc, cwd_status, slen !, host_status
-   integer, parameter :: buflen = 64, cwdlen = 512
+
    character(len = buflen) :: buf
    integer :: i
    logical :: flag
-   character(len = cwdlen) :: cwd_proc
-   ! character(len = buflen) :: host_proc
 #ifdef MPI41
    type(MPI_Info) :: hw_info
 #endif
 
+   ! Initialize MPI and handle potential errors
    call MPI_Init(ierr)
    if (ierr /= MPI_SUCCESS) then
       call MPI_Error_string(ierr, cwd_proc, slen)
@@ -40,17 +45,21 @@ program ask_mpi
       stop
    endif
 
+   ! Get communicator size and rank
    call MPI_Comm_size(MPI_COMM_WORLD, comm_size)
    call MPI_Comm_rank(MPI_COMM_WORLD, my_rank)
 
+   ! Print program start info from rank 0
    if (my_rank == 0) write(*, '(A,I0,A)') 'Program ask_mpi started on ', comm_size, ' ranks.'
 
+   ! Get process info (PID, CWD, hostname)
    pid_proc    = getpid()
    cwd_status  = getcwd(cwd_proc)
    call MPI_Get_processor_name(myname, mynamelen)
    !host_status = hostnm(host_proc)  ! hostnm returns the same thing as MPI_Get_processor_name
 
-   do i = 0, comm_size
+   ! Barrier and print process-specific info
+   do i = 0, comm_size - 1
       call MPI_Barrier(MPI_COMM_WORLD)
       if (my_rank == i) then
          write(*, '(A,I11,A,I0,A)')'MPI rank: ', my_rank, ' hostname = "' // trim(myname) // '", PID = ', pid_proc, &
@@ -61,6 +70,7 @@ program ask_mpi
    call MPI_Barrier(MPI_COMM_WORLD)
    call sleep(1)
 
+   ! Rank 0 gathers and prints MPI library info
    if (my_rank == 0) then
       call MPI_Get_version(version, subversion)
       write(*, '(A,I0,A,I0)')'MPI version:          ', version, '.', subversion
@@ -119,10 +129,12 @@ program ask_mpi
 
    end if
 
+   ! Finalize MPI
    call MPI_Finalize()
 
 contains
 
+   ! Subroutine to print MPI info attributes
    subroutine printinfo(mpi_info_object, descr)
 
       implicit none
